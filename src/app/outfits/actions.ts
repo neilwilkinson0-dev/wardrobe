@@ -70,9 +70,37 @@ export async function rateOutfitAction(formData: FormData) {
   revalidatePath(`/outfits/${outfitId}`);
 }
 
-export async function logOutfitWearAction(formData: FormData) {
+export type LogWearState =
+  | { status: "idle" }
+  | { status: "logged"; date: string }
+  | { status: "error"; message: string };
+
+async function syncLastWornDate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  outfitId: string,
+) {
+  const { data: latest } = await supabase
+    .from("wear_events")
+    .select("worn_on")
+    .eq("outfit_id", outfitId)
+    .order("worn_on", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  await supabase
+    .from("outfits")
+    .update({ last_worn_date: latest?.worn_on ?? null })
+    .eq("id", outfitId);
+}
+
+export async function logOutfitWearAction(
+  _prevState: LogWearState,
+  formData: FormData,
+): Promise<LogWearState> {
   const outfitId = formData.get("outfitId");
-  if (typeof outfitId !== "string" || !outfitId) return;
+  if (typeof outfitId !== "string" || !outfitId) {
+    return { status: "error", message: "Missing outfit." };
+  }
 
   const wornOn = (formData.get("wornOn") as string | null) || new Date().toISOString().slice(0, 10);
 
@@ -82,8 +110,32 @@ export async function logOutfitWearAction(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  await supabase.from("wear_events").insert({ outfit_id: outfitId, worn_on: wornOn });
-  await supabase.from("outfits").update({ last_worn_date: wornOn }).eq("id", outfitId);
+  const { error } = await supabase.from("wear_events").insert({ outfit_id: outfitId, worn_on: wornOn });
+  if (error) {
+    return { status: "error", message: `Couldn't log wear: ${error.message}` };
+  }
+  await syncLastWornDate(supabase, outfitId);
+
+  revalidatePath(`/outfits/${outfitId}`);
+  revalidatePath("/outfits");
+  return { status: "logged", date: wornOn };
+}
+
+export async function deleteOutfitWearEventAction(formData: FormData) {
+  const outfitId = formData.get("outfitId");
+  const wearEventId = formData.get("wearEventId");
+  if (
+    typeof outfitId !== "string" ||
+    !outfitId ||
+    typeof wearEventId !== "string" ||
+    !wearEventId
+  ) {
+    return;
+  }
+
+  const supabase = await createClient();
+  await supabase.from("wear_events").delete().eq("id", wearEventId);
+  await syncLastWornDate(supabase, outfitId);
 
   revalidatePath(`/outfits/${outfitId}`);
   revalidatePath("/outfits");

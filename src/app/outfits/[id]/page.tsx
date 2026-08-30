@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { renameOutfitAction, rateOutfitAction, logOutfitWearAction } from "../actions";
+import WearLog from "@/components/WearLog";
+import {
+  renameOutfitAction,
+  rateOutfitAction,
+  logOutfitWearAction,
+  deleteOutfitWearEventAction,
+} from "../actions";
 
 const ROLE_LABEL: Record<string, string> = {
   top: "Top",
@@ -34,10 +40,9 @@ export default async function OutfitDetailPage({
 
   const { data: wearEvents } = await supabase
     .from("wear_events")
-    .select("worn_on")
+    .select("id, worn_on")
     .eq("outfit_id", id)
     .order("worn_on", { ascending: false });
-  const wearCount = wearEvents?.length ?? 0;
 
   const params2 = new URLSearchParams();
   const memberItems = (outfit.outfit_items ?? [])
@@ -97,29 +102,13 @@ export default async function OutfitDetailPage({
         ))}
       </form>
 
-      <div className="mb-6 rounded-lg border border-neutral-200 p-4">
-        <p className="mb-3 text-sm text-neutral-600">
-          {wearCount === 0
-            ? "Never worn."
-            : `Worn ${wearCount} time${wearCount === 1 ? "" : "s"}${
-                outfit.last_worn_date ? ` · last on ${outfit.last_worn_date}` : ""
-              }`}
-        </p>
-        <form action={logOutfitWearAction} className="flex gap-2">
-          <input type="hidden" name="outfitId" value={outfit.id} />
-          <input
-            type="date"
-            name="wornOn"
-            defaultValue={new Date().toISOString().slice(0, 10)}
-            className="flex-1 rounded-md border border-neutral-300 p-2 text-sm"
-          />
-          <button
-            type="submit"
-            className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white"
-          >
-            Wear today
-          </button>
-        </form>
+      <div className="mb-6">
+        <WearLog
+          hiddenFields={{ outfitId: outfit.id }}
+          events={wearEvents ?? []}
+          logAction={logOutfitWearAction}
+          deleteAction={deleteOutfitWearEventAction}
+        />
       </div>
 
       <ul className="flex flex-col gap-1 text-sm">

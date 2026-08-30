@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import PendingRefresher from "@/components/PendingRefresher";
+import WearLog from "@/components/WearLog";
 import ItemDetailForm from "./ItemDetailForm";
-import { toggleRetiredAction, logWearAction, reclassifyItemAction } from "./actions";
+import { toggleRetiredAction, logWearAction, deleteWearEventAction, reclassifyItemAction } from "./actions";
 
 // Re-classifying schedules background work via after() from this route.
 export const maxDuration = 60;
@@ -39,12 +40,9 @@ export default async function ItemDetailPage({
 
   const { data: wearEvents } = await supabase
     .from("wear_events")
-    .select("worn_on")
+    .select("id, worn_on")
     .eq("item_id", id)
     .order("worn_on", { ascending: false });
-
-  const lastWorn = wearEvents?.[0]?.worn_on ?? null;
-  const wearCount = wearEvents?.length ?? 0;
 
   const { data: categories } = await supabase
     .from("categories")
@@ -145,29 +143,13 @@ export default async function ItemDetailPage({
         </div>
       )}
 
-      <div className="mb-6 rounded-lg border border-neutral-200 p-4">
-        <p className="mb-3 text-sm text-neutral-600">
-          {wearCount === 0
-            ? "Never logged as worn."
-            : `Worn ${wearCount} time${wearCount === 1 ? "" : "s"}${
-                lastWorn ? ` · last on ${lastWorn}` : ""
-              }`}
-        </p>
-        <form action={logWearAction} className="flex gap-2">
-          <input type="hidden" name="itemId" value={item.id} />
-          <input
-            type="date"
-            name="wornOn"
-            defaultValue={new Date().toISOString().slice(0, 10)}
-            className="flex-1 rounded-md border border-neutral-300 p-2 text-sm"
-          />
-          <button
-            type="submit"
-            className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white"
-          >
-            Log a wear
-          </button>
-        </form>
+      <div className="mb-6">
+        <WearLog
+          hiddenFields={{ itemId: item.id }}
+          events={wearEvents ?? []}
+          logAction={logWearAction}
+          deleteAction={deleteWearEventAction}
+        />
       </div>
 
       <ItemDetailForm item={item} categories={categories ?? []} />

@@ -144,9 +144,19 @@ export async function reclassifyItemAction(formData: FormData) {
   revalidatePath(`/items/${itemId}`);
 }
 
-export async function logWearAction(formData: FormData) {
+export type LogWearState =
+  | { status: "idle" }
+  | { status: "logged"; date: string }
+  | { status: "error"; message: string };
+
+export async function logWearAction(
+  _prevState: LogWearState,
+  formData: FormData,
+): Promise<LogWearState> {
   const itemId = formData.get("itemId");
-  if (typeof itemId !== "string" || !itemId) return;
+  if (typeof itemId !== "string" || !itemId) {
+    return { status: "error", message: "Missing item." };
+  }
 
   const wornOn = readText(formData, "wornOn") ?? new Date().toISOString().slice(0, 10);
 
@@ -156,10 +166,28 @@ export async function logWearAction(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  await supabase.from("wear_events").insert({
+  const { error } = await supabase.from("wear_events").insert({
     item_id: itemId,
     worn_on: wornOn,
   });
+
+  if (error) {
+    return { status: "error", message: `Couldn't log wear: ${error.message}` };
+  }
+
+  revalidatePath(`/items/${itemId}`);
+  return { status: "logged", date: wornOn };
+}
+
+export async function deleteWearEventAction(formData: FormData) {
+  const itemId = formData.get("itemId");
+  const wearEventId = formData.get("wearEventId");
+  if (typeof itemId !== "string" || !itemId || typeof wearEventId !== "string" || !wearEventId) {
+    return;
+  }
+
+  const supabase = await createClient();
+  await supabase.from("wear_events").delete().eq("id", wearEventId);
 
   revalidatePath(`/items/${itemId}`);
 }
