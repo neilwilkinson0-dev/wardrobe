@@ -186,7 +186,8 @@ Rules:
 - Pick exactly one id from each candidate list given (top/bottom/footwear required, outer layer optional).
 - Apply colour-combination theory: complementary, analogous, or tonal pairings; balance one bold piece against quieter ones rather than clashing prints/colours.
 - Prefer items with a higher "days_since_worn" (or "never worn") when multiple choices are otherwise similarly valid — the goal is reviving neglected clothes, not just picking favourites.
-- Only include an outer layer if one is given and the weather calls for it.`,
+- Only include an outer layer if one is given and the weather calls for it.
+- If "colouring_profile" is given, treat it as a humble steer, never a rule: mildly favour items whose colours are in "flattering_colours" and mildly avoid ones in "unflattering_colours" when a comparably good alternative exists, but never let it override a genuinely better combination or force an invalid outfit. If it meaningfully influenced the pick, say so gently in "reasoning" (e.g. "...and navy tends to suit you") — never state it as certain.`,
         messages: [
           {
             role: "user",

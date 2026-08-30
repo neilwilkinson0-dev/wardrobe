@@ -22,12 +22,18 @@ export default async function PreferencesPage() {
 
   return (
     <div className="mx-auto max-w-lg px-4 py-6">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Preferences</h1>
         <Link href="/" className="text-sm text-neutral-500 underline underline-offset-2">
           Back to wardrobe
         </Link>
       </div>
+      <Link
+        href="/settings/colouring"
+        className="mb-6 inline-block text-sm text-neutral-500 underline underline-offset-2"
+      >
+        Edit colouring profile
+      </Link>
       <PreferencesForm
         stylePrinciples={stylePrinciples}
         occasionTags={preferences?.occasion_tags ?? []}
