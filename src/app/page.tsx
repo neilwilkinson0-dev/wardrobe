@@ -91,6 +91,13 @@ export default async function WardrobePage() {
         </Link>
       </div>
 
+      <Link
+        href="/wear/snap"
+        className="mb-6 rounded-full border border-neutral-300 px-6 py-3 text-center text-base font-medium"
+      >
+        Log what I&apos;m wearing (photo)
+      </Link>
+
       {error && (
         <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
           Couldn&apos;t load your items: {error.message}
