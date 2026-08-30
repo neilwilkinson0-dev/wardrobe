@@ -67,7 +67,6 @@ export default function NewItemForm({ categories }: { categories: Category[] }) 
             type="file"
             name="garmentPhoto"
             accept="image/*"
-            capture="environment"
             required
             className="rounded-md border border-neutral-300 p-2 text-sm"
           />
@@ -79,7 +78,6 @@ export default function NewItemForm({ categories }: { categories: Category[] }) 
             type="file"
             name="labelPhoto"
             accept="image/*"
-            capture="environment"
             className="rounded-md border border-neutral-300 p-2 text-sm"
           />
         </label>
