@@ -48,6 +48,12 @@ export default async function WardrobePage() {
         </div>
         <div className="flex items-center gap-4">
           <Link
+            href="/settings/preferences"
+            className="text-sm text-neutral-500 underline underline-offset-2"
+          >
+            Preferences
+          </Link>
+          <Link
             href="/outfits"
             className="text-sm text-neutral-500 underline underline-offset-2"
           >

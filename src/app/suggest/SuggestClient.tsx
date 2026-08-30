@@ -4,6 +4,7 @@ import { useActionState, useRef, useState } from "react";
 import Link from "next/link";
 import { getSuggestionAction, type SuggestState } from "./actions";
 import { saveOutfitAction, type SaveOutfitState } from "@/app/outfits/actions";
+import SuggestionFeedback from "./SuggestionFeedback";
 
 const initialState: SuggestState = { status: "idle" };
 const initialSaveState: SaveOutfitState = { status: "idle" };
@@ -152,6 +153,13 @@ export default function SuggestClient({ occasionTags }: { occasionTags: string[]
               {savePending ? "Saving…" : "Save this outfit"}
             </button>
           </form>
+
+          <SuggestionFeedback
+            name={state.name}
+            itemIds={state.items.map((item) => item.id)}
+            occasion={state.occasion}
+            weather={state.weather}
+          />
         </div>
       )}
     </div>
