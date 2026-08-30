@@ -1,8 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { classifyItem } from "@/lib/anthropic/classifyItem";
 import { removeBackground } from "@/lib/remove-bg/removeBackground";
-import { scoreDuplicate, DUPLICATE_SCORE_THRESHOLD, MAX_DUPLICATE_SCORE } from "@/lib/duplicates/score";
+import { findVisualDuplicateGroups, type LabeledImage } from "@/lib/anthropic/findDuplicates";
 import { randomUUID } from "crypto";
+
+const MAX_DUPLICATE_CANDIDATES = 8;
 
 /**
  * Runs after quickAddItemAction's response has already been sent (via
@@ -21,8 +23,11 @@ export async function processNewItem(params: {
 
   const notices: string[] = [];
 
-  const download = async (path: string): Promise<Buffer | null> => {
-    const { data, error } = await supabase.storage.from("originals").download(path);
+  const download = async (
+    path: string,
+    bucket: "originals" | "cutouts" = "originals",
+  ): Promise<Buffer | null> => {
+    const { data, error } = await supabase.storage.from(bucket).download(path);
     if (error || !data) return null;
     return Buffer.from(await data.arrayBuffer());
   };
@@ -115,36 +120,37 @@ export async function processNewItem(params: {
   if (categoryId) {
     const { data: candidates } = await supabase
       .from("items")
-      .select("id, colours, pattern, formality")
+      .select("id, cutout_path, original_photo_path")
       .eq("category_id", categoryId)
-      .neq("id", itemId);
+      .neq("id", itemId)
+      .order("added_date", { ascending: false })
+      .limit(MAX_DUPLICATE_CANDIDATES);
 
-    possibleDuplicateIds = (candidates ?? [])
-      .map((candidate) => ({
-        id: candidate.id,
-        score: scoreDuplicate(
-          {
-            category_id: categoryId,
-            colours: draft?.colours ?? null,
-            pattern: draft?.pattern ?? null,
-            formality: draft?.formality ?? null,
-          },
-          {
-            category_id: categoryId,
-            colours: candidate.colours as { dominant?: string[]; secondary?: string[] } | null,
-            pattern: candidate.pattern,
-            formality: candidate.formality,
-          },
-        ),
-      }))
-      .filter(({ score }) => score >= DUPLICATE_SCORE_THRESHOLD)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3)
-      .map(({ id }) => id);
+    if (candidates && candidates.length > 0) {
+      const images: LabeledImage[] = [{ label: "NEW", buffer: garmentBuffer }];
+      for (const candidate of candidates) {
+        const bucket = candidate.cutout_path ? "cutouts" : "originals";
+        const path = candidate.cutout_path ?? candidate.original_photo_path;
+        const buffer = await download(path, bucket);
+        if (buffer) images.push({ label: candidate.id, buffer });
+      }
+
+      try {
+        const groups = await findVisualDuplicateGroups(images);
+        const newGroup = groups?.find((group) => group.includes("NEW"));
+        if (newGroup) {
+          possibleDuplicateIds = newGroup.filter((label) => label !== "NEW");
+        }
+      } catch (err) {
+        notices.push(
+          `Duplicate check failed: ${err instanceof Error ? err.message : "unknown error"}`,
+        );
+      }
+    }
 
     if (possibleDuplicateIds.length > 0) {
       notices.push(
-        `Looks similar to ${possibleDuplicateIds.length} item${possibleDuplicateIds.length === 1 ? "" : "s"} you already own (out of ${MAX_DUPLICATE_SCORE} match points).`,
+        `Looks like the same or a near-identical garment as ${possibleDuplicateIds.length} item${possibleDuplicateIds.length === 1 ? "" : "s"} you already own.`,
       );
     }
   }

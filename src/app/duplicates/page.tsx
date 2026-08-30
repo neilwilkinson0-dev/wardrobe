@@ -1,9 +1,18 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { scoreDuplicate, DUPLICATE_SCORE_THRESHOLD, MAX_DUPLICATE_SCORE } from "@/lib/duplicates/score";
+import { findVisualDuplicateGroups, type LabeledImage } from "@/lib/anthropic/findDuplicates";
 
 const SIGNED_URL_TTL_SECONDS = 300;
+const MAX_ITEMS_PER_CATEGORY = 15;
+
+type Item = {
+  id: string;
+  subcategory: string | null;
+  category_id: string | null;
+  cutout_path: string | null;
+  original_photo_path: string;
+};
 
 export default async function DuplicatesPage() {
   const supabase = await createClient();
@@ -15,49 +24,69 @@ export default async function DuplicatesPage() {
 
   const { data: items } = await supabase
     .from("items")
-    .select("id, subcategory, category_id, colours, pattern, formality, cutout_path, original_photo_path")
+    .select("id, subcategory, category_id, cutout_path, original_photo_path")
     .eq("retired", false);
 
-  const all = items ?? [];
+  const all: Item[] = items ?? [];
 
-  const pairs: { a: (typeof all)[number]; b: (typeof all)[number]; score: number }[] = [];
-  for (let i = 0; i < all.length; i++) {
-    for (let j = i + 1; j < all.length; j++) {
-      const a = all[i];
-      const b = all[j];
-      const score = scoreDuplicate(
-        {
-          category_id: a.category_id,
-          colours: a.colours as { dominant?: string[]; secondary?: string[] } | null,
-          pattern: a.pattern,
-          formality: a.formality,
-        },
-        {
-          category_id: b.category_id,
-          colours: b.colours as { dominant?: string[]; secondary?: string[] } | null,
-          pattern: b.pattern,
-          formality: b.formality,
-        },
-      );
-      if (score >= DUPLICATE_SCORE_THRESHOLD) pairs.push({ a, b, score });
+  const byCategory = new Map<string, Item[]>();
+  for (const item of all) {
+    if (!item.category_id) continue;
+    const list = byCategory.get(item.category_id) ?? [];
+    list.push(item);
+    byCategory.set(item.category_id, list);
+  }
+
+  const download = async (item: Item): Promise<Buffer | null> => {
+    const bucket = item.cutout_path ? "cutouts" : "originals";
+    const path = item.cutout_path ?? item.original_photo_path;
+    const { data, error } = await supabase.storage.from(bucket).download(path);
+    if (error || !data) return null;
+    return Buffer.from(await data.arrayBuffer());
+  };
+
+  const groups: Item[][] = [];
+  let checkFailed = false;
+
+  for (const categoryItems of byCategory.values()) {
+    if (categoryItems.length < 2) continue;
+    const batch = categoryItems.slice(0, MAX_ITEMS_PER_CATEGORY);
+
+    const images: LabeledImage[] = [];
+    const itemById = new Map<string, Item>();
+    for (const item of batch) {
+      const buffer = await download(item);
+      if (buffer) {
+        images.push({ label: item.id, buffer });
+        itemById.set(item.id, item);
+      }
+    }
+
+    try {
+      const found = await findVisualDuplicateGroups(images);
+      if (found === null) continue;
+      for (const labelGroup of found) {
+        const groupItems = labelGroup.map((id) => itemById.get(id)).filter((i): i is Item => !!i);
+        if (groupItems.length >= 2) groups.push(groupItems);
+      }
+    } catch {
+      checkFailed = true;
     }
   }
-  pairs.sort((p, q) => q.score - p.score);
 
   const withThumbnails = await Promise.all(
-    pairs.map(async (pair) => {
-      const thumb = async (item: (typeof all)[number]) => {
-        const bucket = item.cutout_path ? "cutouts" : "originals";
-        const path = item.cutout_path ?? item.original_photo_path;
-        const { data: signed } = await supabase.storage.from(bucket).createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
-        return signed?.signedUrl ?? null;
-      };
-      return {
-        ...pair,
-        aThumbnail: await thumb(pair.a),
-        bThumbnail: await thumb(pair.b),
-      };
-    }),
+    groups.map(async (group) => ({
+      items: await Promise.all(
+        group.map(async (item) => {
+          const bucket = item.cutout_path ? "cutouts" : "originals";
+          const path = item.cutout_path ?? item.original_photo_path;
+          const { data: signed } = await supabase.storage
+            .from(bucket)
+            .createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
+          return { ...item, thumbnailUrl: signed?.signedUrl ?? null };
+        }),
+      ),
+    })),
   );
 
   return (
@@ -69,33 +98,41 @@ export default async function DuplicatesPage() {
         </Link>
       </div>
 
-      {withThumbnails.length === 0 && (
+      <p className="mb-4 text-sm text-neutral-500">
+        Photos of same-category items are compared directly for visual similarity — same
+        or near-identical garments are grouped below.
+      </p>
+
+      {checkFailed && (
+        <p className="mb-4 rounded-md bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          Some categories couldn&apos;t be checked (the duplicate check failed) — this list
+          may be incomplete.
+        </p>
+      )}
+
+      {withThumbnails.length === 0 && !checkFailed && (
         <p className="text-sm text-neutral-500">
-          Nothing flagged — no two items in the same category share enough colours,
-          pattern or formality to look like duplicates.
+          Nothing flagged — no two items in the same category look like the same garment.
         </p>
       )}
 
       <ul className="flex flex-col gap-3">
-        {withThumbnails.map(({ a, b, score, aThumbnail, bThumbnail }) => (
+        {withThumbnails.map(({ items: groupItems }) => (
           <li
-            key={`${a.id}-${b.id}`}
-            className="flex items-center gap-3 rounded-lg border border-neutral-200 p-3"
+            key={groupItems.map((i) => i.id).join("-")}
+            className="flex items-center gap-3 overflow-x-auto rounded-lg border border-neutral-200 p-3"
           >
-            {[
-              { item: a, thumbnail: aThumbnail },
-              { item: b, thumbnail: bThumbnail },
-            ].map(({ item, thumbnail }) => (
+            {groupItems.map((item) => (
               <Link
                 key={item.id}
                 href={`/items/${item.id}`}
-                className="flex flex-1 flex-col items-center gap-1 text-center"
+                className="flex flex-1 flex-shrink-0 flex-col items-center gap-1 text-center"
               >
                 <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-md bg-neutral-50">
-                  {thumbnail ? (
+                  {item.thumbnailUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={thumbnail}
+                      src={item.thumbnailUrl}
                       alt={item.subcategory ?? "Wardrobe item"}
                       className="h-full w-full object-contain"
                     />
@@ -106,9 +143,6 @@ export default async function DuplicatesPage() {
                 <span className="text-xs">{item.subcategory ?? "Item"}</span>
               </Link>
             ))}
-            <span className="text-xs text-neutral-500">
-              {score}/{MAX_DUPLICATE_SCORE}
-            </span>
           </li>
         ))}
       </ul>
