@@ -64,12 +64,20 @@ export default async function WardrobePage() {
         </div>
       </header>
 
-      <Link
-        href="/items/new"
-        className="mb-6 rounded-full bg-black px-6 py-3 text-center text-base font-medium text-white"
-      >
-        Add an item
-      </Link>
+      <div className="mb-6 flex gap-3">
+        <Link
+          href="/suggest"
+          className="flex-1 rounded-full border border-black px-6 py-3 text-center text-base font-medium"
+        >
+          Today&apos;s suggestion
+        </Link>
+        <Link
+          href="/items/new"
+          className="flex-1 rounded-full bg-black px-6 py-3 text-center text-base font-medium text-white"
+        >
+          Add an item
+        </Link>
+      </div>
 
       {error && (
         <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
