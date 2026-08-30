@@ -24,7 +24,7 @@ interface ExistingCategory {
   role: string;
 }
 
-const CLASSIFICATION_MODEL = "claude-haiku-4-5-20251001";
+const CLASSIFICATION_MODEL = "claude-haiku-4-5";
 
 function mediaTypeFromBuffer(buffer: Buffer): "image/jpeg" | "image/png" | "image/webp" {
   if (buffer[0] === 0x89 && buffer[1] === 0x50) return "image/png";
@@ -106,11 +106,18 @@ Never invent a brand, size, or care instruction that isn't visibly legible on a 
   });
 
   const textBlock = message.content.find((block) => block.type === "text");
-  if (!textBlock || textBlock.type !== "text") return null;
+  if (!textBlock || textBlock.type !== "text") {
+    throw new Error(`Unexpected response shape (stop_reason: ${message.stop_reason})`);
+  }
+
+  const jsonText = textBlock.text
+    .trim()
+    .replace(/^```(?:json)?\s*/, "")
+    .replace(/```\s*$/, "");
 
   try {
-    return JSON.parse(textBlock.text) as ClassificationDraft;
+    return JSON.parse(jsonText) as ClassificationDraft;
   } catch {
-    return null;
+    throw new Error(`Couldn't parse the model's response: ${jsonText.slice(0, 200)}`);
   }
 }

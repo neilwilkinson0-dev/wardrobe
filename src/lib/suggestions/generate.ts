@@ -4,7 +4,7 @@ import type { Database } from "@/lib/supabase/types";
 import type { Forecast } from "@/lib/weather/getForecast";
 import { currentSeason, type Season } from "./season";
 
-const SUGGESTION_MODEL = "claude-haiku-4-5-20251001";
+const SUGGESTION_MODEL = "claude-haiku-4-5";
 const OUTFIT_ROLES = ["top", "bottom", "footwear", "outer_layer"] as const;
 type OutfitRole = (typeof OUTFIT_ROLES)[number];
 
@@ -210,7 +210,11 @@ Rules:
 
       const textBlock = message.content.find((b) => b.type === "text");
       if (textBlock && textBlock.type === "text") {
-        const parsed = JSON.parse(textBlock.text) as {
+        const jsonText = textBlock.text
+          .trim()
+          .replace(/^```(?:json)?\s*/, "")
+          .replace(/```\s*$/, "");
+        const parsed = JSON.parse(jsonText) as {
           top_item_id: string;
           bottom_item_id: string;
           footwear_item_id: string;
