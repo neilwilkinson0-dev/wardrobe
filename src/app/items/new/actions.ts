@@ -7,6 +7,20 @@ import { classifyItem, type ClassificationDraft } from "@/lib/anthropic/classify
 import { removeBackground } from "@/lib/remove-bg/removeBackground";
 import { scoreDuplicate, DUPLICATE_SCORE_THRESHOLD, MAX_DUPLICATE_SCORE } from "@/lib/duplicates/score";
 
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+async function downloadFromStorage(
+  supabase: SupabaseServerClient,
+  bucket: "originals" | "cutouts",
+  path: string,
+): Promise<Buffer> {
+  const { data, error } = await supabase.storage.from(bucket).download(path);
+  if (error || !data) {
+    throw new Error(`Couldn't read ${path} from ${bucket}: ${error?.message ?? "not found"}`);
+  }
+  return Buffer.from(await data.arrayBuffer());
+}
+
 export interface PossibleDuplicate {
   id: string;
   subcategory: string | null;
@@ -28,12 +42,6 @@ export type ClassifyState =
 
 export type SaveState = { status: "idle" } | { status: "error"; message: string };
 
-function extensionFor(file: File): string {
-  if (file.type === "image/png") return "png";
-  if (file.type === "image/webp") return "webp";
-  return "jpg";
-}
-
 export async function classifyItemAction(
   _prevState: ClassifyState,
   formData: FormData,
@@ -44,24 +52,32 @@ export async function classifyItemAction(
   } = await supabase.auth.getUser();
   if (!user) return { status: "error", message: "Not signed in." };
 
-  const garmentFile = formData.get("garmentPhoto");
-  if (!(garmentFile instanceof File) || garmentFile.size === 0) {
-    return { status: "error", message: "A garment photo is required." };
+  // The browser uploads photos straight to Storage before calling this
+  // action — Vercel caps a serverless function's own request body at 4.5MB
+  // regardless of Next.js's bodySizeLimit config, which two full-res phone
+  // photos routinely exceed. This action only ever receives small strings.
+  const originalPhotoPath = formData.get("originalPhotoPath");
+  if (typeof originalPhotoPath !== "string" || !originalPhotoPath) {
+    return { status: "error", message: "Missing uploaded photo — try again." };
+  }
+  const labelPhotoPathRaw = formData.get("labelPhotoPath");
+  const labelPhotoPath =
+    typeof labelPhotoPathRaw === "string" && labelPhotoPathRaw ? labelPhotoPathRaw : null;
+
+  let garmentBuffer: Buffer;
+  try {
+    garmentBuffer = await downloadFromStorage(supabase, "originals", originalPhotoPath);
+  } catch (err) {
+    return { status: "error", message: err instanceof Error ? err.message : "Couldn't read the uploaded photo." };
   }
 
-  const labelFile = formData.get("labelPhoto");
-  const hasLabel = labelFile instanceof File && labelFile.size > 0;
-
-  const garmentBuffer = Buffer.from(await garmentFile.arrayBuffer());
-  const labelBuffer = hasLabel ? Buffer.from(await (labelFile as File).arrayBuffer()) : undefined;
-
-  const originalPhotoPath = `${user.id}/${randomUUID()}.${extensionFor(garmentFile)}`;
-  const { error: uploadError } = await supabase.storage
-    .from("originals")
-    .upload(originalPhotoPath, garmentBuffer, { contentType: garmentFile.type || "image/jpeg" });
-
-  if (uploadError) {
-    return { status: "error", message: `Couldn't upload photo: ${uploadError.message}` };
+  let labelBuffer: Buffer | undefined;
+  if (labelPhotoPath) {
+    try {
+      labelBuffer = await downloadFromStorage(supabase, "originals", labelPhotoPath);
+    } catch {
+      // Non-fatal — proceed with garment-only classification.
+    }
   }
 
   const { data: categories } = await supabase
@@ -81,6 +97,12 @@ export async function classifyItemAction(
     if (!draft) notices.push("Auto-classification is off (no ANTHROPIC_API_KEY set) — fill in the details manually.");
   } catch (err) {
     notices.push(`Auto-classification failed: ${err instanceof Error ? err.message : "unknown error"}`);
+  }
+
+  // The label photo only exists to inform classification — it's never
+  // stored as part of the item, so clean it up once it's served its purpose.
+  if (labelPhotoPath) {
+    await supabase.storage.from("originals").remove([labelPhotoPath]);
   }
 
   let cutoutPath: string | null = null;

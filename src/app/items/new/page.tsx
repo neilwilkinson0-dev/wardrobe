@@ -18,7 +18,7 @@ export default async function NewItemPage() {
   return (
     <div className="mx-auto max-w-lg px-4 py-6">
       <h1 className="mb-6 text-xl font-semibold">Add an item</h1>
-      <NewItemForm categories={categories ?? []} />
+      <NewItemForm categories={categories ?? []} userId={user.id} />
     </div>
   );
 }

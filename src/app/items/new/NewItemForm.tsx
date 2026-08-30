@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 import {
   classifyItemAction,
   saveItemAction,
@@ -21,6 +22,18 @@ const ROLES = ["top", "bottom", "footwear", "outer_layer", "accessory"] as const
 const initialClassifyState: ClassifyState = { status: "idle" };
 const initialSaveState: SaveState = { status: "idle" };
 
+function extensionFor(file: File): string {
+  if (file.type === "image/png") return "png";
+  if (file.type === "image/webp") return "webp";
+  return "jpg";
+}
+
+function randomId(): string {
+  // crypto.randomUUID is available in every browser this app targets, but
+  // the "crypto" import above is Node's — use the Web Crypto global instead.
+  return globalThis.crypto.randomUUID();
+}
+
 function ConfidenceBadge({ level }: { level?: FieldConfidence }) {
   if (!level) return null;
   return (
@@ -36,7 +49,13 @@ function ConfidenceBadge({ level }: { level?: FieldConfidence }) {
   );
 }
 
-export default function NewItemForm({ categories }: { categories: Category[] }) {
+export default function NewItemForm({
+  categories,
+  userId,
+}: {
+  categories: Category[];
+  userId: string;
+}) {
   const [classifyState, classifyFormAction, classifyPending] = useActionState(
     classifyItemAction,
     initialClassifyState,
@@ -46,6 +65,57 @@ export default function NewItemForm({ categories }: { categories: Category[] }) 
     initialSaveState,
   );
   const [categoryMode, setCategoryMode] = useState<"existing" | "new">("existing");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const garmentInputRef = useRef<HTMLInputElement>(null);
+  const labelInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleClassifySubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setUploadError(null);
+
+    const garmentFile = garmentInputRef.current?.files?.[0];
+    if (!garmentFile) {
+      setUploadError("A garment photo is required.");
+      return;
+    }
+    const labelFile = labelInputRef.current?.files?.[0];
+
+    setUploading(true);
+    try {
+      const supabase = createClient();
+
+      const originalPhotoPath = `${userId}/${randomId()}.${extensionFor(garmentFile)}`;
+      const { error: garmentUploadError } = await supabase.storage
+        .from("originals")
+        .upload(originalPhotoPath, garmentFile, {
+          contentType: garmentFile.type || "image/jpeg",
+        });
+      if (garmentUploadError) {
+        setUploadError(`Couldn't upload photo: ${garmentUploadError.message}`);
+        return;
+      }
+
+      let labelPhotoPath = "";
+      if (labelFile) {
+        labelPhotoPath = `${userId}/${randomId()}.${extensionFor(labelFile)}`;
+        const { error: labelUploadError } = await supabase.storage
+          .from("originals")
+          .upload(labelPhotoPath, labelFile, { contentType: labelFile.type || "image/jpeg" });
+        if (labelUploadError) {
+          // Non-fatal — proceed with garment-only classification.
+          labelPhotoPath = "";
+        }
+      }
+
+      const formData = new FormData();
+      formData.set("originalPhotoPath", originalPhotoPath);
+      formData.set("labelPhotoPath", labelPhotoPath);
+      classifyFormAction(formData);
+    } finally {
+      setUploading(false);
+    }
+  }
 
   const draft = classifyState.status === "drafted" ? classifyState.draft : null;
   const confidence = draft?.confidence ?? {};
@@ -59,11 +129,13 @@ export default function NewItemForm({ categories }: { categories: Category[] }) 
   }, [draft, categories]);
 
   if (classifyState.status !== "drafted") {
+    const busy = uploading || classifyPending;
     return (
-      <form action={classifyFormAction} className="flex flex-col gap-4">
+      <form onSubmit={handleClassifySubmit} className="flex flex-col gap-4">
         <label className="flex flex-col gap-1 text-sm font-medium">
           Garment photo
           <input
+            ref={garmentInputRef}
             type="file"
             name="garmentPhoto"
             accept="image/*"
@@ -75,6 +147,7 @@ export default function NewItemForm({ categories }: { categories: Category[] }) 
         <label className="flex flex-col gap-1 text-sm font-medium">
           Label photo (optional)
           <input
+            ref={labelInputRef}
             type="file"
             name="labelPhoto"
             accept="image/*"
@@ -82,18 +155,18 @@ export default function NewItemForm({ categories }: { categories: Category[] }) 
           />
         </label>
 
-        {classifyState.status === "error" && (
+        {(uploadError || classifyState.status === "error") && (
           <p className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-700">
-            {classifyState.message}
+            {uploadError ?? (classifyState.status === "error" ? classifyState.message : "")}
           </p>
         )}
 
         <button
           type="submit"
-          disabled={classifyPending}
+          disabled={busy}
           className="rounded-full bg-black px-6 py-3 text-base font-medium text-white disabled:opacity-50"
         >
-          {classifyPending ? "Classifying…" : "Classify garment"}
+          {uploading ? "Uploading…" : classifyPending ? "Classifying…" : "Classify garment"}
         </button>
       </form>
     );
