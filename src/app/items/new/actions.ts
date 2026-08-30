@@ -87,17 +87,17 @@ export async function classifyItemAction(
 
   const notices: string[] = [];
 
-  let draft: ClassificationDraft | null = null;
-  try {
-    draft = await classifyItem({
+  // Classification and background removal are independent calls to two
+  // different services — run them concurrently rather than back-to-back,
+  // since sequential awaits here were the main reason add-item felt slow.
+  const [classifyResult, cutoutResult] = await Promise.allSettled([
+    classifyItem({
       garmentPhoto: garmentBuffer,
       labelPhoto: labelBuffer,
       existingCategories: categories ?? [],
-    });
-    if (!draft) notices.push("Auto-classification is off (no ANTHROPIC_API_KEY set) — fill in the details manually.");
-  } catch (err) {
-    notices.push(`Auto-classification failed: ${err instanceof Error ? err.message : "unknown error"}`);
-  }
+    }),
+    removeBackground(garmentBuffer),
+  ]);
 
   // The label photo only exists to inform classification — it's never
   // stored as part of the item, so clean it up once it's served its purpose.
@@ -105,9 +105,19 @@ export async function classifyItemAction(
     await supabase.storage.from("originals").remove([labelPhotoPath]);
   }
 
+  let draft: ClassificationDraft | null = null;
+  if (classifyResult.status === "fulfilled") {
+    draft = classifyResult.value;
+    if (!draft) notices.push("Auto-classification is off (no ANTHROPIC_API_KEY set) — fill in the details manually.");
+  } else {
+    notices.push(
+      `Auto-classification failed: ${classifyResult.reason instanceof Error ? classifyResult.reason.message : "unknown error"}`,
+    );
+  }
+
   let cutoutPath: string | null = null;
-  try {
-    const cutoutBuffer = await removeBackground(garmentBuffer);
+  if (cutoutResult.status === "fulfilled") {
+    const cutoutBuffer = cutoutResult.value;
     if (cutoutBuffer) {
       cutoutPath = `${user.id}/${randomUUID()}.png`;
       const { error: cutoutUploadError } = await supabase.storage
@@ -120,8 +130,10 @@ export async function classifyItemAction(
     } else {
       notices.push("Background removal is off (no REMOVE_BG_API_KEY set) — no cut-out for now.");
     }
-  } catch (err) {
-    notices.push(`Background removal failed: ${err instanceof Error ? err.message : "unknown error"}`);
+  } else {
+    notices.push(
+      `Background removal failed: ${cutoutResult.reason instanceof Error ? cutoutResult.reason.message : "unknown error"}`,
+    );
   }
 
   let possibleDuplicates: PossibleDuplicate[] = [];
