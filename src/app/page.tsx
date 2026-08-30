@@ -40,14 +40,22 @@ export default async function WardrobePage() {
           <h1 className="text-xl font-semibold">Your wardrobe</h1>
           <p className="text-sm text-neutral-500">{user.email}</p>
         </div>
-        <form action={signOut}>
-          <button
-            type="submit"
+        <div className="flex items-center gap-4">
+          <Link
+            href="/settings/categories"
             className="text-sm text-neutral-500 underline underline-offset-2"
           >
-            Sign out
-          </button>
-        </form>
+            Categories
+          </Link>
+          <form action={signOut}>
+            <button
+              type="submit"
+              className="text-sm text-neutral-500 underline underline-offset-2"
+            >
+              Sign out
+            </button>
+          </form>
+        </div>
       </header>
 
       <Link
@@ -83,24 +91,26 @@ export default async function WardrobePage() {
               key={item.id}
               className="overflow-hidden rounded-lg border border-neutral-200"
             >
-              <div className="flex aspect-square items-center justify-center bg-neutral-50">
-                {item.thumbnailUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={item.thumbnailUrl}
-                    alt={item.subcategory ?? "Wardrobe item"}
-                    className="h-full w-full object-contain"
-                  />
-                ) : (
-                  <span className="text-xs text-neutral-400">No photo</span>
-                )}
-              </div>
-              <div className="p-2 text-sm">
-                <p className="font-medium">{item.subcategory ?? "Untitled item"}</p>
-                <p className="text-xs text-neutral-500">
-                  {item.categories?.name ?? "Uncategorised"}
-                </p>
-              </div>
+              <Link href={`/items/${item.id}`}>
+                <div className="flex aspect-square items-center justify-center bg-neutral-50">
+                  {item.thumbnailUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.thumbnailUrl}
+                      alt={item.subcategory ?? "Wardrobe item"}
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <span className="text-xs text-neutral-400">No photo</span>
+                  )}
+                </div>
+                <div className="p-2 text-sm">
+                  <p className="font-medium">{item.subcategory ?? "Untitled item"}</p>
+                  <p className="text-xs text-neutral-500">
+                    {item.categories?.name ?? "Uncategorised"}
+                  </p>
+                </div>
+              </Link>
             </li>
           ))}
         </ul>
