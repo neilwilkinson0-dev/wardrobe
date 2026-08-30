@@ -51,6 +51,14 @@ export default async function ItemDetailPage({
 
   const isPending = item.classification_status === "pending";
 
+  const wearCount = wearEvents?.length ?? 0;
+  const costPerWear =
+    item.price && wearCount > 0
+      ? new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(
+          item.price / wearCount,
+        )
+      : null;
+
   const duplicates = await Promise.all(
     (item.possible_duplicate_ids ?? []).map(async (dupId) => {
       const { data: dup } = await supabase
@@ -141,6 +149,10 @@ export default async function ItemDetailPage({
             ))}
           </div>
         </div>
+      )}
+
+      {costPerWear && (
+        <p className="mb-2 text-sm text-neutral-500">{costPerWear} per wear</p>
       )}
 
       <div className="mb-6">
