@@ -16,7 +16,12 @@ export default async function LoginPage({
         </p>
       </div>
 
-      {error && (
+      {error === "not_invited" && (
+        <p className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-700">
+          This wardrobe isn&apos;t open to your account yet.
+        </p>
+      )}
+      {error && error !== "not_invited" && (
         <p className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-700">
           Sign in failed — please try again.
         </p>
