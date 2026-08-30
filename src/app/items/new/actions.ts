@@ -5,6 +5,14 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { classifyItem, type ClassificationDraft } from "@/lib/anthropic/classifyItem";
 import { removeBackground } from "@/lib/remove-bg/removeBackground";
+import { scoreDuplicate, DUPLICATE_SCORE_THRESHOLD, MAX_DUPLICATE_SCORE } from "@/lib/duplicates/score";
+
+export interface PossibleDuplicate {
+  id: string;
+  subcategory: string | null;
+  thumbnailUrl: string | null;
+  score: number;
+}
 
 export type ClassifyState =
   | { status: "idle" }
@@ -15,6 +23,7 @@ export type ClassifyState =
       cutoutPath: string | null;
       draft: ClassificationDraft | null;
       notice: string | null;
+      possibleDuplicates: PossibleDuplicate[];
     };
 
 export type SaveState = { status: "idle" } | { status: "error"; message: string };
@@ -57,7 +66,7 @@ export async function classifyItemAction(
 
   const { data: categories } = await supabase
     .from("categories")
-    .select("name, role")
+    .select("id, name, role")
     .order("name");
 
   const notices: string[] = [];
@@ -93,12 +102,64 @@ export async function classifyItemAction(
     notices.push(`Background removal failed: ${err instanceof Error ? err.message : "unknown error"}`);
   }
 
+  let possibleDuplicates: PossibleDuplicate[] = [];
+  if (draft) {
+    const matchedCategory = categories?.find(
+      (c) => c.name.toLowerCase() === draft!.category_guess?.toLowerCase(),
+    );
+
+    if (matchedCategory) {
+      const { data: candidates } = await supabase
+        .from("items")
+        .select("id, subcategory, colours, pattern, formality, cutout_path, original_photo_path")
+        .eq("category_id", matchedCategory.id);
+
+      const scored = (candidates ?? [])
+        .map((candidate) => ({
+          candidate,
+          score: scoreDuplicate(
+            { category_id: matchedCategory.id, colours: draft!.colours, pattern: draft!.pattern, formality: draft!.formality },
+            {
+              category_id: matchedCategory.id,
+              colours: candidate.colours as { dominant?: string[]; secondary?: string[] } | null,
+              pattern: candidate.pattern,
+              formality: candidate.formality,
+            },
+          ),
+        }))
+        .filter(({ score }) => score >= DUPLICATE_SCORE_THRESHOLD)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3);
+
+      possibleDuplicates = await Promise.all(
+        scored.map(async ({ candidate, score }) => {
+          const bucket = candidate.cutout_path ? "cutouts" : "originals";
+          const path = candidate.cutout_path ?? candidate.original_photo_path;
+          const { data: signed } = await supabase.storage.from(bucket).createSignedUrl(path, 300);
+          return {
+            id: candidate.id,
+            subcategory: candidate.subcategory,
+            thumbnailUrl: signed?.signedUrl ?? null,
+            score,
+          };
+        }),
+      );
+
+      if (possibleDuplicates.length > 0) {
+        notices.push(
+          `This looks similar to ${possibleDuplicates.length} item${possibleDuplicates.length === 1 ? "" : "s"} you already own (out of ${MAX_DUPLICATE_SCORE} match points) — check below before saving.`,
+        );
+      }
+    }
+  }
+
   return {
     status: "drafted",
     originalPhotoPath,
     cutoutPath,
     draft,
     notice: notices.length > 0 ? notices.join(" ") : null,
+    possibleDuplicates,
   };
 }
 

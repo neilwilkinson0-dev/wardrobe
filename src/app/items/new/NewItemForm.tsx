@@ -113,6 +113,36 @@ export default function NewItemForm({ categories }: { categories: Category[] }) 
         </p>
       )}
 
+      {classifyState.possibleDuplicates.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-md border border-amber-200 bg-amber-50 p-3">
+          <p className="text-sm font-medium text-amber-900">Already in your wardrobe?</p>
+          <div className="flex gap-3 overflow-x-auto">
+            {classifyState.possibleDuplicates.map((dup) => (
+              <Link
+                key={dup.id}
+                href={`/items/${dup.id}`}
+                target="_blank"
+                className="flex w-20 flex-shrink-0 flex-col items-center gap-1 text-center"
+              >
+                <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md border border-amber-300 bg-white">
+                  {dup.thumbnailUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={dup.thumbnailUrl}
+                      alt={dup.subcategory ?? "Similar item"}
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <span className="text-xs text-neutral-400">No photo</span>
+                  )}
+                </div>
+                <span className="text-xs text-amber-900">{dup.subcategory ?? "Item"}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-medium">Category</legend>
         <div className="flex gap-4 text-sm">

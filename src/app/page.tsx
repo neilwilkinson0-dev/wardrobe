@@ -42,6 +42,12 @@ export default async function WardrobePage() {
         </div>
         <div className="flex items-center gap-4">
           <Link
+            href="/duplicates"
+            className="text-sm text-neutral-500 underline underline-offset-2"
+          >
+            Duplicates
+          </Link>
+          <Link
             href="/settings/categories"
             className="text-sm text-neutral-500 underline underline-offset-2"
           >
