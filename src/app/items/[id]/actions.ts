@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { processNewItem } from "@/lib/items/processNewItem";
 
 export type UpdateItemState = { status: "idle" } | { status: "error"; message: string };
 
@@ -106,6 +108,40 @@ export async function toggleRetiredAction(formData: FormData) {
 
   revalidatePath(`/items/${itemId}`);
   revalidatePath("/");
+}
+
+export async function reclassifyItemAction(formData: FormData) {
+  const itemId = formData.get("itemId");
+  if (typeof itemId !== "string" || !itemId) return;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: item } = await supabase
+    .from("items")
+    .select("original_photo_path")
+    .eq("id", itemId)
+    .single();
+  if (!item) return;
+
+  await supabase
+    .from("items")
+    .update({ classification_status: "pending", processing_notices: null })
+    .eq("id", itemId);
+
+  after(() =>
+    processNewItem({
+      userId: user.id,
+      itemId,
+      originalPhotoPath: item.original_photo_path,
+      labelPhotoPath: null,
+    }),
+  );
+
+  revalidatePath(`/items/${itemId}`);
 }
 
 export async function logWearAction(formData: FormData) {

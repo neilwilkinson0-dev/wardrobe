@@ -85,7 +85,7 @@ Respond with ONLY a single JSON object, no prose, no markdown fences. Shape:
   "category_guess": string,        // best-matching name from the user's existing categories; if none fit, propose a short new one
   "category_is_new": boolean,      // true only if category_guess is not in the user's existing list
   "new_category_role": "top" | "bottom" | "footwear" | "outer_layer" | "accessory" | null, // required if category_is_new is true, else null
-  "subcategory": string | null,    // e.g. "crew-neck jumper", "chinos"
+  "subcategory": string | null,    // the specific garment type — see rules below
   "colours": { "dominant": string[], "secondary": string[] },
   "pattern": string | null,        // e.g. "plain", "stripe", "check"
   "formality": string | null,      // e.g. "casual", "smart-casual", "formal"
@@ -100,6 +100,13 @@ Respond with ONLY a single JSON object, no prose, no markdown fences. Shape:
     // "solid" if read directly off a label photo, "tentative" if guessed from the garment photo alone
   }
 }
+
+"category_guess" is only the broad role-bucket (e.g. "Tops", "Trousers") — "subcategory" is where the specific garment type belongs, and it is the field the app shows most prominently, so never leave it as a restatement of the category. Pick the most specific type the photo actually supports, using visual cues to disambiguate:
+- Tops: t-shirt (short sleeve, crew or v-neck, jersey knit, no collar/buttons) · polo shirt (collar + placket buttons, pique knit) · shirt (woven fabric, full button front, collar) · hoodie (hood + drawstring, often a kangaroo pocket) · sweatshirt (crew neck, no hood, brushed fleece) · jumper/sweater (knitted, ribbed cuffs and hem) · cardigan (knitted, buttons or zip down the front) · vest/tank top
+- Bottoms: jeans (denim) · chinos (cotton twill, flat or slight taper) · tailored trousers · joggers (elasticated cuffs) · shorts · cargo trousers (patch pockets)
+- Footwear: trainers/sneakers · boots · loafers · derby/oxford shoes · sandals · sliders
+- Outer layers: jacket · coat · blazer · gilet/bodywarmer (sleeveless) · overshirt
+If genuinely ambiguous between two close types, pick the more likely one rather than a vague fallback, and reflect the uncertainty in confidence ("tentative").
 
 Never invent a brand, size, or care instruction that isn't visibly legible on a label photo — leave those null rather than guessing.`,
     messages: [{ role: "user", content }],

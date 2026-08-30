@@ -3,7 +3,10 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import PendingRefresher from "@/components/PendingRefresher";
 import ItemDetailForm from "./ItemDetailForm";
-import { toggleRetiredAction, logWearAction } from "./actions";
+import { toggleRetiredAction, logWearAction, reclassifyItemAction } from "./actions";
+
+// Re-classifying schedules background work via after() from this route.
+export const maxDuration = 60;
 
 const SIGNED_URL_TTL_SECONDS = 300;
 
@@ -169,7 +172,18 @@ export default async function ItemDetailPage({
 
       <ItemDetailForm item={item} categories={categories ?? []} />
 
-      <form action={toggleRetiredAction} className="mt-6">
+      <form action={reclassifyItemAction} className="mt-6">
+        <input type="hidden" name="itemId" value={item.id} />
+        <button
+          type="submit"
+          disabled={isPending}
+          className="w-full rounded-full border border-neutral-300 px-6 py-3 text-sm font-medium text-neutral-700 disabled:opacity-50"
+        >
+          Re-classify from photo
+        </button>
+      </form>
+
+      <form action={toggleRetiredAction} className="mt-3">
         <input type="hidden" name="itemId" value={item.id} />
         <input type="hidden" name="retired" value={(!item.retired).toString()} />
         <button
