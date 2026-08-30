@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import PendingRefresher from "@/components/PendingRefresher";
 import { signOut } from "./actions";
 
 const SIGNED_URL_TTL_SECONDS = 300;
@@ -18,9 +19,13 @@ export default async function WardrobePage() {
 
   const { data: items, error } = await supabase
     .from("items")
-    .select("id, subcategory, added_date, cutout_path, original_photo_path, categories(name)")
+    .select(
+      "id, subcategory, added_date, cutout_path, original_photo_path, classification_status, categories(name)",
+    )
     .eq("retired", false)
     .order("added_date", { ascending: false });
+
+  const hasPending = (items ?? []).some((item) => item.classification_status === "pending");
 
   const itemsWithThumbnails = await Promise.all(
     (items ?? []).map(async (item) => {
@@ -35,6 +40,7 @@ export default async function WardrobePage() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-lg flex-col px-4 py-6">
+      <PendingRefresher active={hasPending} />
       <header className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Your wardrobe</h1>
@@ -106,7 +112,12 @@ export default async function WardrobePage() {
               className="overflow-hidden rounded-lg border border-neutral-200"
             >
               <Link href={`/items/${item.id}`}>
-                <div className="flex aspect-square items-center justify-center bg-neutral-50">
+                <div className="relative flex aspect-square items-center justify-center bg-neutral-50">
+                  {item.classification_status === "pending" && (
+                    <span className="absolute right-1 top-1 z-10 rounded-full bg-black/70 px-2 py-0.5 text-xs text-white">
+                      Classifying…
+                    </span>
+                  )}
                   {item.thumbnailUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img

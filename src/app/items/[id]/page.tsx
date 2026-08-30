@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import PendingRefresher from "@/components/PendingRefresher";
 import ItemDetailForm from "./ItemDetailForm";
 import { toggleRetiredAction, logWearAction } from "./actions";
 
@@ -41,8 +43,35 @@ export default async function ItemDetailPage({
   const lastWorn = wearEvents?.[0]?.worn_on ?? null;
   const wearCount = wearEvents?.length ?? 0;
 
+  const { data: categories } = await supabase
+    .from("categories")
+    .select("id, name, role")
+    .order("name");
+
+  const isPending = item.classification_status === "pending";
+
+  const duplicates = await Promise.all(
+    (item.possible_duplicate_ids ?? []).map(async (dupId) => {
+      const { data: dup } = await supabase
+        .from("items")
+        .select("id, subcategory, cutout_path, original_photo_path")
+        .eq("id", dupId)
+        .single();
+      if (!dup) return null;
+      const dupBucket = dup.cutout_path ? "cutouts" : "originals";
+      const dupPath = dup.cutout_path ?? dup.original_photo_path;
+      const { data: dupSigned } = await supabase.storage
+        .from(dupBucket)
+        .createSignedUrl(dupPath, SIGNED_URL_TTL_SECONDS);
+      return { ...dup, thumbnailUrl: dupSigned?.signedUrl ?? null };
+    }),
+  );
+  const validDuplicates = duplicates.filter((d): d is NonNullable<typeof d> => d !== null);
+
   return (
     <div className="mx-auto max-w-lg px-4 py-6">
+      <PendingRefresher active={isPending} />
+
       <div className="mb-4 flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-neutral-50">
         {signed?.signedUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -67,6 +96,51 @@ export default async function ItemDetailPage({
           </p>
         </div>
       </div>
+
+      {isPending && (
+        <p className="mb-4 rounded-md bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          Classifying in the background — this updates automatically once it&apos;s done.
+        </p>
+      )}
+
+      {item.processing_notices && item.processing_notices.length > 0 && (
+        <div className="mb-4 flex flex-col gap-2">
+          {item.processing_notices.map((notice, i) => (
+            <p key={i} className="rounded-md bg-amber-50 px-4 py-2 text-sm text-amber-800">
+              {notice}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {validDuplicates.length > 0 && (
+        <div className="mb-4 flex flex-col gap-2 rounded-md border border-amber-200 bg-amber-50 p-3">
+          <p className="text-sm font-medium text-amber-900">Already in your wardrobe?</p>
+          <div className="flex gap-3 overflow-x-auto">
+            {validDuplicates.map((dup) => (
+              <Link
+                key={dup.id}
+                href={`/items/${dup.id}`}
+                className="flex w-20 flex-shrink-0 flex-col items-center gap-1 text-center"
+              >
+                <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md border border-amber-300 bg-white">
+                  {dup.thumbnailUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={dup.thumbnailUrl}
+                      alt={dup.subcategory ?? "Similar item"}
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <span className="text-xs text-neutral-400">No photo</span>
+                  )}
+                </div>
+                <span className="text-xs text-amber-900">{dup.subcategory ?? "Item"}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mb-6 rounded-lg border border-neutral-200 p-4">
         <p className="mb-3 text-sm text-neutral-600">
@@ -93,7 +167,7 @@ export default async function ItemDetailPage({
         </form>
       </div>
 
-      <ItemDetailForm item={item} />
+      <ItemDetailForm item={item} categories={categories ?? []} />
 
       <form action={toggleRetiredAction} className="mt-6">
         <input type="hidden" name="itemId" value={item.id} />

@@ -38,12 +38,37 @@ export async function updateItemAction(
 
   const supabase = await createClient();
 
+  let categoryId: string | null | undefined;
+  const categoryMode = formData.get("categoryMode");
+  if (categoryMode === "new") {
+    const name = readText(formData, "newCategoryName");
+    const role = formData.get("newCategoryRole");
+    if (!name || typeof role !== "string" || !role) {
+      return { status: "error", message: "New category needs a name and role." };
+    }
+    const { data: newCategory, error: categoryError } = await supabase
+      .from("categories")
+      .insert({ name, role })
+      .select("id")
+      .single();
+    if (categoryError || !newCategory) {
+      return {
+        status: "error",
+        message: `Couldn't create category: ${categoryError?.message ?? "unknown error"}`,
+      };
+    }
+    categoryId = newCategory.id;
+  } else if (categoryMode === "existing") {
+    categoryId = readText(formData, "existingCategoryId");
+  }
+
   // A plain edit never re-runs classification — it only updates the fields the
   // user changed. Re-classifying is reserved for an explicit request or a
   // replaced photo (not yet built).
   const { error } = await supabase
     .from("items")
     .update({
+      ...(categoryId !== undefined ? { category_id: categoryId } : {}),
       subcategory: readText(formData, "subcategory"),
       colours: {
         dominant: readList(formData, "coloursDominant"),

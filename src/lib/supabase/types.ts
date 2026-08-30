@@ -81,6 +81,7 @@ export type Database = {
           brand: string | null
           care: string | null
           category_id: string | null
+          classification_status: string
           colours: Json | null
           confidence: Json | null
           created_at: string
@@ -91,7 +92,9 @@ export type Database = {
           notes: string | null
           original_photo_path: string
           pattern: string | null
+          possible_duplicate_ids: string[] | null
           price: number | null
+          processing_notices: string[] | null
           retired: boolean
           season_suitability: string | null
           silhouette: string | null
@@ -105,6 +108,7 @@ export type Database = {
           brand?: string | null
           care?: string | null
           category_id?: string | null
+          classification_status?: string
           colours?: Json | null
           confidence?: Json | null
           created_at?: string
@@ -115,7 +119,9 @@ export type Database = {
           notes?: string | null
           original_photo_path: string
           pattern?: string | null
+          possible_duplicate_ids?: string[] | null
           price?: number | null
+          processing_notices?: string[] | null
           retired?: boolean
           season_suitability?: string | null
           silhouette?: string | null
@@ -129,6 +135,7 @@ export type Database = {
           brand?: string | null
           care?: string | null
           category_id?: string | null
+          classification_status?: string
           colours?: Json | null
           confidence?: Json | null
           created_at?: string
@@ -139,7 +146,9 @@ export type Database = {
           notes?: string | null
           original_photo_path?: string
           pattern?: string | null
+          possible_duplicate_ids?: string[] | null
           price?: number | null
+          processing_notices?: string[] | null
           retired?: boolean
           season_suitability?: string | null
           silhouette?: string | null
