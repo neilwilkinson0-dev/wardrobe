@@ -3,8 +3,10 @@
 import { useActionState, useRef, useState } from "react";
 import Link from "next/link";
 import { getSuggestionAction, type SuggestState } from "./actions";
+import { saveOutfitAction, type SaveOutfitState } from "@/app/outfits/actions";
 
 const initialState: SuggestState = { status: "idle" };
+const initialSaveState: SaveOutfitState = { status: "idle" };
 
 const ROLE_LABEL: Record<string, string> = {
   top: "Top",
@@ -15,6 +17,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 export default function SuggestClient({ occasionTags }: { occasionTags: string[] }) {
   const [state, formAction, pending] = useActionState(getSuggestionAction, initialState);
+  const [saveState, saveFormAction, savePending] = useActionState(saveOutfitAction, initialSaveState);
   const [locationStatus, setLocationStatus] = useState<"idle" | "requesting" | "granted" | "denied">(
     "idle",
   );
@@ -130,6 +133,25 @@ export default function SuggestClient({ occasionTags }: { occasionTags: string[]
               </li>
             ))}
           </ul>
+
+          <form action={saveFormAction}>
+            <input type="hidden" name="name" value={state.name} />
+            {state.items.map((item) => (
+              <input key={item.id} type="hidden" name="itemId" value={item.id} />
+            ))}
+            {saveState.status === "error" && (
+              <p className="mb-2 rounded-md bg-red-50 px-4 py-2 text-sm text-red-700">
+                {saveState.message}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={savePending}
+              className="w-full rounded-full border border-black px-6 py-3 text-base font-medium disabled:opacity-50"
+            >
+              {savePending ? "Saving…" : "Save this outfit"}
+            </button>
+          </form>
         </div>
       )}
     </div>
