@@ -10,75 +10,93 @@ app, each in its own Postgres schema:
 | piano            | `piano`    | `jochehygpypjbrrayxkc`   |
 | holiday-schedule | `holiday`  | `kzdhgzeqylzxbfdputih`   |
 
-The tables, policies, functions, buckets and realtime settings are already
-created (`supabase/migrations/20261019*`, `20261122*`). Each app's
-`claude/youthful-edison-pjaisi` branch points its code at its schema. What's
-left is copying the data and switching each app over.
+The tables, policies, functions, buckets and realtime settings already exist
+(`supabase/migrations/20261019*`, `20261122*`). Each app's
+`claude/youthful-edison-pjaisi` branch points its code at its schema.
+
+Move the apps one at a time, easiest first, and pause each old project as
+soon as its app works here. Paused projects aren't charged for compute.
 
 Adding another app later: create a new schema the same way, add it to the
 exposed schemas, and pass `db: { schema: '<name>' }` to `createClient`. When
 the project gets busy, upgrade its compute size instead of adding projects.
 
-## 1. Dashboard settings (shared project)
+## 0. Once
 
-1. **Data API → Exposed schemas**: add `meetings`, `piano`, `holiday`
-   (keep `public`). Without this the apps get "schema must be one of…" errors.
-2. **Authentication → URL Configuration → Redirect URLs**: add the piano and
-   holiday-schedule site URLs (with `/**`), next to wardrobe's.
-3. **Authentication → Sign In / Providers**: holiday-schedule uses email +
-   password as well as Google, so make sure **Email** is enabled and new
-   sign-ups are allowed if holiday people should still be able to register.
-   Google is already set up for wardrobe; piano and holiday now sign in through
-   the same Google client, so its consent screen shows wardrobe's app name.
-4. **Authentication → Emails**: if holiday-schedule's old project had a custom
-   password-reset template (it uses the 6-digit code) or custom SMTP, copy
-   them across.
-
-## 2. Copy the data
-
-Run once, just before switching the apps over (anything written to the old
-projects after this is not copied):
-
-1. Pause holiday-schedule's **price-tracker** GitHub Action so it doesn't write
-   to the old project mid-copy.
-2. From a machine with `pg_dump`/`psql` 17+, set the variables listed at the
-   top of `migrate-data.sh` and run:
+1. Merge wardrobe's `claude/youthful-edison-pjaisi` branch (migrations, this
+   script and this file; no app changes).
+2. Shared project → Project Settings → Data API → Exposed schemas: add
+   `meetings`, `piano` and `holiday` (keep `public`).
+3. On the computer you'll run the script from: `pg_dump`/`psql` 17+
+   (`brew install postgresql@17` on a Mac), plus `curl` and `python3`.
+4. Shared project → Connect → Session pooler: copy the connection string and
+   put your database password in it, then:
 
    ```bash
-   bash supabase/consolidation/migrate-data.sh
+   export TARGET_DB_URL='postgresql://postgres.nvdcdghoiqmncregbknm:PASSWORD@...pooler.supabase.com:5432/postgres'
    ```
 
-   It copies every row, holiday-schedule's logins (same passwords; your account
-   is merged with the one already here) and its stored files, rewrites
-   stored file links to the new project, then prints a row-count check that
-   should read `ok` on every line. It refuses to run over a schema that
-   already has rows; `FORCE=1` empties and recopies, so use it only before the
-   apps are switched.
+## 1. meetings
 
-## 3. Switch each app
+1. Old meetings project → Connect → Session pooler →
+   `export SOURCE_DB_URL='...'`
+2. `bash supabase/consolidation/migrate-data.sh meetings` (it should end
+   with "every table matches").
+3. Vercel (meetings) → Environment Variables: set `NEXT_PUBLIC_SUPABASE_URL`
+   to `https://nvdcdghoiqmncregbknm.supabase.co` and
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY` to the shared project's publishable key
+   (Project Settings → API Keys).
+4. Merge the meetings branch (Vercel redeploys with the new values).
+5. Check: open a presenter session; the screen should follow the remote live.
+6. Pause the old meetings project (its Project Settings → General).
 
-| App              | Merge branch | Then update                                                                                     |
-| ---------------- | ------------ | ----------------------------------------------------------------------------------------------- |
-| meetings         | yes          | Vercel: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`                              |
-| piano            | yes          | Vercel: the same two, plus `SUPABASE_SERVICE_ROLE_KEY`                                            |
-| holiday-schedule | yes          | Vercel: `SUPABASE_SERVICE_ROLE_KEY`; GitHub repo secret `SUPABASE_SERVICE_ROLE_KEY`; re-enable the price-tracker Action |
-| wardrobe         | yes (migrations only, no app change) | nothing                                                            |
+## 2. piano
 
-URL: `https://nvdcdghoiqmncregbknm.supabase.co`. Keys: Project Settings → API
-Keys. holiday-schedule has its URL and publishable key in the code already.
+1. Shared project → Authentication → URL Configuration → Redirect URLs: add
+   the piano site URL with `/**` on the end.
+2. `export SOURCE_DB_URL='...'` with the old piano project's connection
+   string, then `bash supabase/consolidation/migrate-data.sh piano`.
+3. Vercel (piano): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   and `SUPABASE_SERVICE_ROLE_KEY` (the shared project's service role / secret
+   key).
+4. Merge the piano branch.
+5. Check: sign in again with Google and edit a song. Only emails in
+   `piano.owners` can change data; add more with
+   `insert into piano.owners values ('someone@example.com')`.
+6. Pause the old piano project.
 
-Sign in again on piano and holiday-schedule after switching; old sessions
-belong to the old projects.
+## 3. holiday-schedule
 
-## 4. Check, then retire the old projects
+1. Shared project → Authentication:
+   - URL Configuration → Redirect URLs: add the holiday site URL with `/**`.
+   - Sign In / Providers → Email: enabled, and allow new sign-ups if new
+     holiday people should still be able to register.
+   - Emails: if the old project had a custom password-reset template (the app
+     uses the 6-digit code) or custom SMTP, copy them across.
+2. GitHub (holiday-schedule) → Actions → price-tracker → Disable workflow,
+   so nothing writes to the old project during the copy.
+3. Copy:
 
-- meetings: run a presenter session; the screen should follow the remote live.
-- piano: edit a song while signed in (writes are now limited to emails in
-  `piano.owners`; add more with
-  `insert into piano.owners values ('someone@example.com')`).
-- holiday-schedule: sign in with a password account and a Google account,
-  check the chalkboard images load, and let one price-tracker run finish.
+   ```bash
+   export SOURCE_DB_URL='...old holiday project...'
+   export TARGET_SERVICE_KEY='...shared project service role key...'
+   export SOURCE_SERVICE_KEY='...old holiday project service role key...'
+   bash supabase/consolidation/migrate-data.sh holiday
+   ```
 
-When all four look right, **pause** the three old projects (Project Settings
-→ General) and delete them after a week or two. Pausing stops their compute
-charges, and that's where the saving comes from.
+   This also copies the logins (same passwords; your account is merged with
+   the one already here) and the stored files, and rewrites stored file links.
+4. Vercel (holiday-schedule): `SUPABASE_SERVICE_ROLE_KEY` = the shared
+   project's key. GitHub → Settings → Secrets → Actions: same for
+   `SUPABASE_SERVICE_ROLE_KEY`.
+5. Merge the holiday-schedule branch, then re-enable the price-tracker
+   workflow.
+6. Check: sign in with a password account and a Google account, check the
+   chalkboard images load, and let one price-tracker run finish.
+7. Pause the old holiday project.
+
+## Afterwards
+
+Delete the three paused projects after a week or two, once you're sure
+nothing is missing. If a copy has to be redone before that app is switched,
+`FORCE=1` empties its schema and copies again; never use it after the switch.
