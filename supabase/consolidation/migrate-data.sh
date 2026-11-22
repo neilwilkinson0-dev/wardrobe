@@ -79,14 +79,14 @@ warn_if_files() {
 echo "== meetings"
 prepare_schema meetings
 dump_public "$MEETINGS_DB_URL" meetings
-tgt --single-transaction -f "$WORK/meetings.sql"
+tgt --single-transaction -f "$WORK/meetings.sql" > /dev/null
 warn_if_files "$MEETINGS_DB_URL" meetings
 
 # ---- piano -----------------------------------------------------------------
 echo "== piano"
 prepare_schema piano
 dump_public "$PIANO_DB_URL" piano
-tgt --single-transaction -f "$WORK/piano.sql"
+tgt --single-transaction -f "$WORK/piano.sql" > /dev/null
 warn_if_files "$PIANO_DB_URL" piano
 
 # ---- holiday: logins -------------------------------------------------------
@@ -102,7 +102,7 @@ tgt -c "drop schema if exists migration_staging cascade;
 pg_dump "$HOLIDAY_DB_URL" --data-only --no-owner --no-privileges --table=auth.users --table=auth.identities \
   | sed -e "s/^COPY auth\./COPY migration_staging./" \
   > "$WORK/holiday_auth.sql"
-tgt --single-transaction -f "$WORK/holiday_auth.sql"
+tgt --single-transaction -f "$WORK/holiday_auth.sql" > /dev/null
 
 tgt --single-transaction <<'SQL'
 create table migration_staging.id_map as
@@ -166,8 +166,8 @@ dump_public "$HOLIDAY_DB_URL" holiday
   echo "update holiday.settings set value = replace(value, '$HOLIDAY_REF', '$TARGET_REF');"
   echo "update holiday.bh_settings set value = replace(value, '$HOLIDAY_REF', '$TARGET_REF');"
 } > "$WORK/holiday_load.sql"
-tgt --single-transaction -f "$WORK/holiday_load.sql"
-tgt -c "drop schema migration_staging cascade;"
+tgt --single-transaction -f "$WORK/holiday_load.sql" > /dev/null
+tgt -c "drop schema migration_staging cascade;" 2> /dev/null
 
 # ---- holiday: storage files ------------------------------------------------
 echo "== holiday files"
